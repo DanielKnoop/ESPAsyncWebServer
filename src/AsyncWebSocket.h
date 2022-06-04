@@ -22,6 +22,8 @@
 #define ASYNCWEBSOCKET_H_
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
+#include "AsyncJson.h"
 #ifdef ESP32
 #include <AsyncTCP.h>
 #define WS_MAX_QUEUED_MESSAGES 32
@@ -154,6 +156,22 @@ public:
     virtual size_t send(AsyncClient *client) override ;
 };
 
+class AsyncWebSocketJsonMessage: public AsyncWebSocketMessage {
+  private:
+    size_t _len;
+    size_t _sent;
+    size_t _ack;
+    size_t _acked;
+    DynamicJsonDocument _jsonDocument;
+public:
+    AsyncWebSocketJsonMessage(DynamicJsonDocument jsonDocument, uint8_t opcode=WS_TEXT, bool mask=false);
+    virtual ~AsyncWebSocketJsonMessage() override;
+    virtual bool betweenFrames() const override { return _acked == _ack; }
+    virtual void ack(size_t len, uint32_t time) override ;
+    virtual size_t send(AsyncClient *client) override ;
+};
+
+
 class AsyncWebSocketClient {
   private:
     AsyncClient *_client;
@@ -219,6 +237,7 @@ class AsyncWebSocketClient {
     void text(const String &message);
     void text(const __FlashStringHelper *data);
     void text(AsyncWebSocketMessageBuffer *buffer);
+    void text(DynamicJsonDocument jsonDocument);
 
     void binary(const char * message, size_t len);
     void binary(const char * message);
@@ -307,6 +326,7 @@ class AsyncWebSocket: public AsyncWebHandler {
 
     void message(uint32_t id, AsyncWebSocketMessage *message);
     void messageAll(AsyncWebSocketMultiMessage *message);
+    void messageAll(AsyncWebSocketJsonMessage *message);    
 
     size_t printf(uint32_t id, const char *format, ...)  __attribute__ ((format (printf, 3, 4)));
     size_t printfAll(const char *format, ...)  __attribute__ ((format (printf, 2, 3)));

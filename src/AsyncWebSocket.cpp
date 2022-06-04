@@ -505,6 +505,104 @@ AsyncWebSocketMultiMessage::~AsyncWebSocketMultiMessage() {
 
 
 /*
+ * AsyncWebSocketJsonMessage Message
+ */
+
+
+AsyncWebSocketJsonMessage::AsyncWebSocketJsonMessage(DynamicJsonDocument jsonDocument, uint8_t opcode, bool mask)
+  :_len(0)
+  ,_sent(0)
+  ,_ack(0)
+  ,_acked(0)
+  ,_jsonDocument(jsonDocument)
+{
+
+  _opcode = opcode & 0x07;
+  _mask = mask;
+
+  _len = measureJson(jsonDocument);
+  _status = WS_MSG_SENDING;
+
+}
+
+
+AsyncWebSocketJsonMessage::~AsyncWebSocketJsonMessage() {
+
+}
+
+ void AsyncWebSocketJsonMessage::ack(size_t len, uint32_t time)  {
+   (void)time;
+  _acked += len;
+  // Serial.printf("ACK %u = %u | %u = %u\n", _sent, _len, _acked, _ack);
+  if(_sent >= _len && _acked >= _ack){
+    // Serial.println("ACK end");
+    _status = WS_MSG_SENT;
+  }
+  //ets_printf("A: %u\n", len);
+}
+ size_t AsyncWebSocketJsonMessage::send(AsyncClient *client)  {
+  if(_status != WS_MSG_SENDING) {
+      Serial.println("MS 1");
+    return 0;
+  }
+  if(_acked < _ack){
+     Serial.println("MS 2");
+    return 0;
+  }
+  if(_sent == _len){
+     Serial.println("MS 3");
+    _status = WS_MSG_SENT;
+    return 0;
+  }
+  if(_sent > _len){
+     Serial.println("MS 4");
+      _status = WS_MSG_ERROR;
+      ets_printf("E: %u > %u\n", _sent, _len);
+      return 0;
+  }
+  size_t toSend = _len - _sent;
+  size_t window = webSocketSendFrameWindow(client);
+   Serial.printf("Send %u %u %u\n", _len, _sent, toSend);
+
+  if(window < toSend) {
+      toSend = window;
+  }
+   Serial.printf("s:%u a:%u t:%u\n", _sent, _ack, toSend);
+  _sent += toSend;
+  _ack += toSend + ((toSend < 126)?2:4) + (_mask * 4);
+
+  ets_printf("W: %u %u\n", _sent - toSend, toSend);
+
+  bool final = (_sent == _len);
+  uint8_t * _data = new uint8_t[toSend];
+  ChunkPrint dest(_data, (_sent - toSend), toSend);
+  serializeJson(_jsonDocument, dest);
+  
+  //uint8_t* dPtr = (uint8_t*)(_data + (_sent - toSend));
+  uint8_t opCode = (toSend && _sent == toSend)?_opcode:(uint8_t)WS_CONTINUATION;
+
+  size_t sent = webSocketSendFrame(client, final, opCode, _mask, _data, toSend);
+  _status = WS_MSG_SENDING;
+  if(toSend && sent != toSend){
+      ets_printf("E: %u != %u\n", toSend, sent);
+      size_t delta = (toSend - sent);
+       Serial.printf("\ns:%u a:%u d:%u\n", _sent, _ack, delta);
+      _sent -= delta;
+      _ack -= delta + ((delta < 126)?2:4) + (_mask * 4);
+       Serial.printf("s:%u a:%u\n", _sent, _ack);
+      if (!sent) {
+        _status = WS_MSG_ERROR;
+      }
+  }
+  ets_printf("S: %u %u\n", _sent, sent);
+  return sent;
+}
+
+
+
+
+
+/*
  * Async WebSocket Client
  */
  const char * AWSC_PING_PAYLOAD = "ESPAsyncWebServer-PING";
@@ -868,6 +966,12 @@ void AsyncWebSocketClient::text(AsyncWebSocketMessageBuffer * buffer)
   _queueMessage(new AsyncWebSocketMultiMessage(buffer));
 }
 
+void AsyncWebSocketClient::text(DynamicJsonDocument jsonDocument)
+{
+  Serial.println("JsonDocument Queued");
+  _queueMessage(new AsyncWebSocketJsonMessage(jsonDocument));
+}
+
 void AsyncWebSocketClient::binary(const char * message, size_t len){
   _queueMessage(new AsyncWebSocketBasicMessage(message, len, WS_BINARY));
 }
@@ -1065,6 +1169,14 @@ void AsyncWebSocket::message(uint32_t id, AsyncWebSocketMessage *message){
 }
 
 void AsyncWebSocket::messageAll(AsyncWebSocketMultiMessage *message){
+  for(const auto& c: _clients){
+    if(c->status() == WS_CONNECTED)
+      c->message(message);
+  }
+  _cleanBuffers();
+}
+
+void AsyncWebSocket::messageAll(AsyncWebSocketJsonMessage *message){
   for(const auto& c: _clients){
     if(c->status() == WS_CONNECTED)
       c->message(message);

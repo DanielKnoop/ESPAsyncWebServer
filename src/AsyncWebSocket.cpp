@@ -514,9 +514,9 @@ AsyncWebSocketJsonMessage::AsyncWebSocketJsonMessage(DynamicJsonDocument jsonDoc
   ,_sent(0)
   ,_ack(0)
   ,_acked(0)
-  ,_jsonDocument(jsonDocument)
+  ,_jsonDocument(0)
 {
-
+  _jsonDocument = jsonDocument;
   _opcode = opcode & 0x07;
   _mask = mask;
 
@@ -968,7 +968,6 @@ void AsyncWebSocketClient::text(AsyncWebSocketMessageBuffer * buffer)
 
 void AsyncWebSocketClient::text(DynamicJsonDocument jsonDocument)
 {
-  Serial.println("JsonDocument Queued");
   _queueMessage(new AsyncWebSocketJsonMessage(jsonDocument));
 }
 

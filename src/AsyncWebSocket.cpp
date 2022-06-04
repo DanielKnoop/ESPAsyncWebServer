@@ -542,36 +542,36 @@ AsyncWebSocketJsonMessage::~AsyncWebSocketJsonMessage() {
 }
  size_t AsyncWebSocketJsonMessage::send(AsyncClient *client)  {
   if(_status != WS_MSG_SENDING) {
-      Serial.println("MS 1");
+    // Serial.println("MS 1");
     return 0;
   }
   if(_acked < _ack){
-     Serial.println("MS 2");
+    // Serial.println("MS 2");
     return 0;
   }
   if(_sent == _len){
-     Serial.println("MS 3");
+    // Serial.println("MS 3");
     _status = WS_MSG_SENT;
     return 0;
   }
   if(_sent > _len){
-     Serial.println("MS 4");
+    // Serial.println("MS 4");
       _status = WS_MSG_ERROR;
-      ets_printf("E: %u > %u\n", _sent, _len);
+    //  ets_printf("E: %u > %u\n", _sent, _len);
       return 0;
   }
   size_t toSend = _len - _sent;
   size_t window = webSocketSendFrameWindow(client);
-   Serial.printf("Send %u %u %u\n", _len, _sent, toSend);
+  // Serial.printf("Send %u %u %u\n", _len, _sent, toSend);
 
   if(window < toSend) {
       toSend = window;
   }
-   Serial.printf("s:%u a:%u t:%u\n", _sent, _ack, toSend);
+  // Serial.printf("s:%u a:%u t:%u\n", _sent, _ack, toSend);
   _sent += toSend;
   _ack += toSend + ((toSend < 126)?2:4) + (_mask * 4);
 
-  ets_printf("W: %u %u\n", _sent - toSend, toSend);
+  //ets_printf("W: %u %u\n", _sent - toSend, toSend);
 
   bool final = (_sent == _len);
   uint8_t * _data = new uint8_t[toSend];
@@ -584,17 +584,17 @@ AsyncWebSocketJsonMessage::~AsyncWebSocketJsonMessage() {
   size_t sent = webSocketSendFrame(client, final, opCode, _mask, _data, toSend);
   _status = WS_MSG_SENDING;
   if(toSend && sent != toSend){
-      ets_printf("E: %u != %u\n", toSend, sent);
+      //ets_printf("E: %u != %u\n", toSend, sent);
       size_t delta = (toSend - sent);
-       Serial.printf("\ns:%u a:%u d:%u\n", _sent, _ack, delta);
+      // Serial.printf("\ns:%u a:%u d:%u\n", _sent, _ack, delta);
       _sent -= delta;
       _ack -= delta + ((delta < 126)?2:4) + (_mask * 4);
-       Serial.printf("s:%u a:%u\n", _sent, _ack);
+      // Serial.printf("s:%u a:%u\n", _sent, _ack);
       if (!sent) {
         _status = WS_MSG_ERROR;
       }
   }
-  ets_printf("S: %u %u\n", _sent, sent);
+  //ets_printf("S: %u %u\n", _sent, sent);
   return sent;
 }
 

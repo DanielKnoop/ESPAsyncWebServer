@@ -110,6 +110,32 @@ class AsyncWebSocketMessageBuffer {
 
 };
 
+
+class AsyncWebSocketJsonBuffer {
+  private:
+    size_t _len;
+    bool _lock;
+    uint32_t _count;
+    DynamicJsonDocument _jsonDocument;
+    JsonVariant _root;
+
+  public:
+    AsyncWebSocketJsonBuffer();
+    AsyncWebSocketJsonBuffer(bool isArray, size_t size);
+    ~AsyncWebSocketJsonBuffer();
+    void operator ++(int i) { (void)i; _count++; }
+    void operator --(int i) { (void)i; if (_count > 0) { _count--; } ;  }
+    size_t length() { return _len; }
+    void lock() { _lock = true; }
+    void unlock() { _lock = false; }
+    JsonVariant & getRoot() { return _root; };
+    void setLength() {_len = measureJson(_jsonDocument);}
+    uint32_t count() { return _count; }
+    bool canDelete() { return (!_count && !_lock); }
+
+    friend AsyncWebSocket;
+};
+
 class AsyncWebSocketMessage {
   protected:
     uint8_t _opcode;
@@ -162,9 +188,9 @@ class AsyncWebSocketJsonMessage: public AsyncWebSocketMessage {
     size_t _sent;
     size_t _ack;
     size_t _acked;
-    DynamicJsonDocument _jsonDocument;
+    AsyncWebSocketJsonBuffer * _WSbuffer;
 public:
-    AsyncWebSocketJsonMessage(DynamicJsonDocument jsonDocument, uint8_t opcode=WS_TEXT, bool mask=false);
+    AsyncWebSocketJsonMessage(AsyncWebSocketJsonBuffer * buffer, uint8_t opcode=WS_TEXT, bool mask=false);
     virtual ~AsyncWebSocketJsonMessage() override;
     virtual bool betweenFrames() const override { return _acked == _ack; }
     virtual void ack(size_t len, uint32_t time) override ;
@@ -237,7 +263,7 @@ class AsyncWebSocketClient {
     void text(const String &message);
     void text(const __FlashStringHelper *data);
     void text(AsyncWebSocketMessageBuffer *buffer);
-    void text(DynamicJsonDocument jsonDocument);
+    void text(AsyncWebSocketJsonBuffer * buffer);
 
     void binary(const char * message, size_t len);
     void binary(const char * message);
@@ -357,7 +383,9 @@ class AsyncWebSocket: public AsyncWebHandler {
     //  messagebuffer functions/objects.
     AsyncWebSocketMessageBuffer * makeBuffer(size_t size = 0);
     AsyncWebSocketMessageBuffer * makeBuffer(uint8_t * data, size_t size);
+    AsyncWebSocketJsonBuffer * makeJsonBuffer(bool isArray=false, size_t size = DYNAMIC_JSON_DOCUMENT_SIZE);
     LinkedList<AsyncWebSocketMessageBuffer *> _buffers;
+    LinkedList<AsyncWebSocketJsonBuffer *> _jsonBuffers;
     void _cleanBuffers();
 
     AsyncWebSocketClientLinkedList getClients() const;

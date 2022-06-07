@@ -240,7 +240,30 @@ bool AsyncWebSocketMessageBuffer::reserve(size_t size)
 
 }
 
+AsyncWebSocketJsonBuffer::AsyncWebSocketJsonBuffer() :
+  _lock(false) 
+  , _count(0)
+  , _jsonDocument(DYNAMIC_JSON_DOCUMENT_SIZE)
+{
+    // Serial.println("AsyncWebSocketJsonBuffer Deconstructor");
+  _root = _jsonDocument.createNestedObject();
+}
 
+AsyncWebSocketJsonBuffer::AsyncWebSocketJsonBuffer(bool isArray, size_t size) :
+  _lock(false) 
+  , _count(0)
+  , _jsonDocument(size)
+{
+  if(isArray)
+    _root = _jsonDocument.createNestedArray();
+  else
+    _root = _jsonDocument.createNestedObject();
+}
+
+AsyncWebSocketJsonBuffer::~AsyncWebSocketJsonBuffer()
+{
+  _root.clear();
+}
 
 /*
  * Control Frame
@@ -509,25 +532,28 @@ AsyncWebSocketMultiMessage::~AsyncWebSocketMultiMessage() {
  */
 
 
-AsyncWebSocketJsonMessage::AsyncWebSocketJsonMessage(DynamicJsonDocument jsonDocument, uint8_t opcode, bool mask)
+AsyncWebSocketJsonMessage::AsyncWebSocketJsonMessage(AsyncWebSocketJsonBuffer * buffer, uint8_t opcode, bool mask)
   :_len(0)
   ,_sent(0)
   ,_ack(0)
   ,_acked(0)
-  ,_jsonDocument(0)
+  , _WSbuffer(nullptr)
 {
-  _jsonDocument = jsonDocument;
+  _WSbuffer = buffer;
+  (*_WSbuffer)++;
   _opcode = opcode & 0x07;
   _mask = mask;
 
-  _len = measureJson(jsonDocument);
+  _len = measureJson(_WSbuffer->getRoot());
   _status = WS_MSG_SENDING;
-
 }
 
 
 AsyncWebSocketJsonMessage::~AsyncWebSocketJsonMessage() {
-
+  if (_WSbuffer) {
+    (*_WSbuffer)--; // decreases the counter.
+    // Serial.printf("DEC WSbuffer == %u\n", _WSbuffer->count());
+  }
 }
 
  void AsyncWebSocketJsonMessage::ack(size_t len, uint32_t time)  {
@@ -576,12 +602,14 @@ AsyncWebSocketJsonMessage::~AsyncWebSocketJsonMessage() {
   bool final = (_sent == _len);
   uint8_t * _data = new uint8_t[toSend];
   ChunkPrint dest(_data, (_sent - toSend), toSend);
-  serializeJson(_jsonDocument, dest);
+  serializeJson(_WSbuffer->getRoot(), dest);
   
   //uint8_t* dPtr = (uint8_t*)(_data + (_sent - toSend));
   uint8_t opCode = (toSend && _sent == toSend)?_opcode:(uint8_t)WS_CONTINUATION;
 
   size_t sent = webSocketSendFrame(client, final, opCode, _mask, _data, toSend);
+  delete _data;
+  
   _status = WS_MSG_SENDING;
   if(toSend && sent != toSend){
       //ets_printf("E: %u != %u\n", toSend, sent);
@@ -966,9 +994,9 @@ void AsyncWebSocketClient::text(AsyncWebSocketMessageBuffer * buffer)
   _queueMessage(new AsyncWebSocketMultiMessage(buffer));
 }
 
-void AsyncWebSocketClient::text(DynamicJsonDocument jsonDocument)
+void AsyncWebSocketClient::text(AsyncWebSocketJsonBuffer * buffer)
 {
-  _queueMessage(new AsyncWebSocketJsonMessage(jsonDocument));
+  _queueMessage(new AsyncWebSocketJsonMessage(buffer));
 }
 
 void AsyncWebSocketClient::binary(const char * message, size_t len){
@@ -1003,7 +1031,7 @@ void AsyncWebSocketClient::binary(AsyncWebSocketMessageBuffer * buffer)
 
 IPAddress AsyncWebSocketClient::remoteIP() {
     if(!_client) {
-        return IPAddress(0U);
+        return IPAddress((uint32_t)0);
     }
     return _client->remoteIP();
 }
@@ -1027,6 +1055,7 @@ AsyncWebSocket::AsyncWebSocket(const String& url)
   ,_cNextId(1)
   ,_enabled(true)
   ,_buffers(LinkedList<AsyncWebSocketMessageBuffer *>([](AsyncWebSocketMessageBuffer *b){ delete b; }))
+  ,_jsonBuffers(LinkedList<AsyncWebSocketJsonBuffer *>([](AsyncWebSocketJsonBuffer *b){ delete b; }))
 {
   _eventHandler = NULL;
 }
@@ -1421,6 +1450,17 @@ AsyncWebSocketMessageBuffer * AsyncWebSocket::makeBuffer(uint8_t * data, size_t 
   return buffer;
 }
 
+AsyncWebSocketJsonBuffer * AsyncWebSocket::makeJsonBuffer(bool isArray, size_t size)
+{
+  AsyncWebSocketJsonBuffer * buffer = new AsyncWebSocketJsonBuffer(isArray, size);
+  if(buffer) {
+    AsyncWebLockGuard l(_lock);
+    _jsonBuffers.add(buffer);
+  }
+  return buffer;
+}
+
+
 void AsyncWebSocket::_cleanBuffers()
 {
   AsyncWebLockGuard l(_lock);
@@ -1430,6 +1470,13 @@ void AsyncWebSocket::_cleanBuffers()
         _buffers.remove(c);
     }
   }
+
+  for(AsyncWebSocketJsonBuffer * c: _jsonBuffers){
+    if(c && c->canDelete()){
+         // Serial.printf("Remove from global jsonBuffers = %u\n", _jsonBuffers.length() - 1);
+        _jsonBuffers.remove(c);
+    }
+  }  
 }
 
 AsyncWebSocket::AsyncWebSocketClientLinkedList AsyncWebSocket::getClients() const {

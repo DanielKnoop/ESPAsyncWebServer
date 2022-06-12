@@ -1160,6 +1160,18 @@ void AsyncWebSocket::textAll(AsyncWebSocketMessageBuffer * buffer){
   _cleanBuffers();
 }
 
+void AsyncWebSocket::textAll(AsyncWebSocketJsonBuffer * buffer){
+  if (!buffer) return;
+  buffer->lock();
+  for(const auto& c: _clients){
+    if(c->status() == WS_CONNECTED){
+        c->text(buffer);
+    }
+  }
+  buffer->unlock();
+  _cleanBuffers();
+}
+
 
 void AsyncWebSocket::textAll(const char * message, size_t len){
   //if (_buffers.length()) return;

@@ -334,6 +334,7 @@ class AsyncWebSocket: public AsyncWebHandler {
     void textAll(const String &message);
     void textAll(const __FlashStringHelper *message); //  need to convert
     void textAll(AsyncWebSocketMessageBuffer * buffer);
+    void textAll(AsyncWebSocketJsonBuffer * buffer);
 
     void binary(uint32_t id, const char * message, size_t len);
     void binary(uint32_t id, const char * message);

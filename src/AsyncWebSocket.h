@@ -82,6 +82,36 @@ typedef enum { WS_CONTINUATION, WS_TEXT, WS_BINARY, WS_DISCONNECT = 0x08, WS_PIN
 typedef enum { WS_MSG_SENDING, WS_MSG_SENT, WS_MSG_ERROR } AwsMessageStatus;
 typedef enum { WS_EVT_CONNECT, WS_EVT_DISCONNECT, WS_EVT_PONG, WS_EVT_ERROR, WS_EVT_DATA } AwsEventType;
 
+struct SpiRamAllocator {
+  void* allocate(size_t size) {
+    #ifdef ESP32
+    if(ESP.getFreePsram() > size)
+      return ps_malloc(size);
+    else
+      return malloc(size);
+    #else
+    return malloc(size);
+    #endif
+  }
+
+  void deallocate(void* pointer) {
+    free(pointer);
+  }
+
+  void* reallocate(void* ptr, size_t new_size) {
+    #ifdef ESP32
+    if(ESP.getFreePsram() > new_size)
+      return ps_realloc(ptr, new_size);
+    else
+      return realloc(ptr, new_size);
+    #else
+    return realloc(ptr, new_size);
+    #endif
+  }
+};
+
+using SpiRamJsonDocument = BasicJsonDocument<SpiRamAllocator>;
+
 class AsyncWebSocketMessageBuffer {
   private:
     uint8_t * _data;
@@ -116,7 +146,7 @@ class AsyncWebSocketJsonBuffer {
     size_t _len;
     bool _lock;
     uint32_t _count;
-    DynamicJsonDocument _jsonDocument;
+    SpiRamJsonDocument _jsonDocument;
     JsonVariant _root;
 
   public:

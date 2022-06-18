@@ -2,3 +2,5 @@
 .vscode
 .DS_Store
 prod_env.ini
+src/main.cpp
+platformio.ini

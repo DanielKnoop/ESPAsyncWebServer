@@ -545,14 +545,31 @@ AsyncWebSocketJsonMessage::AsyncWebSocketJsonMessage(AsyncWebSocketJsonBuffer * 
   _mask = mask;
 
   _len = measureJson(_WSbuffer->getRoot());
+  
+  xTaskCreate(this->vTaskSerializeTask, "SERIALIZE_JSON_TASK", 8192 * 2, this, 3, &this->xHandleSerializeTask);
+
   _status = WS_MSG_SENDING;
 }
 
+void AsyncWebSocketJsonMessage::vTaskSerializeTask( void * pvParameters )
+{
+  AsyncWebSocketJsonMessage* me = static_cast<AsyncWebSocketJsonMessage *>(pvParameters);
+
+  Serial.println("Begin Serialize");
+  serializeJson(me->_WSbuffer->getRoot(), me->buff);
+  Serial.println("Serialize finished, delete Task");
+
+  vTaskDelete(NULL);
+}
 
 AsyncWebSocketJsonMessage::~AsyncWebSocketJsonMessage() {
   if (_WSbuffer) {
     (*_WSbuffer)--; // decreases the counter.
     // Serial.printf("DEC WSbuffer == %u\n", _WSbuffer->count());
+  }
+  if(xHandleSerializeTask)
+  {
+    //vTaskDelete(xHandleSerializeTask);
   }
 }
 
@@ -588,7 +605,9 @@ AsyncWebSocketJsonMessage::~AsyncWebSocketJsonMessage() {
   }
   size_t toSend = _len - _sent;
   size_t window = webSocketSendFrameWindow(client);
-  // Serial.printf("Send %u %u %u\n", _len, _sent, toSend);
+  if(window > 2048)
+    window = 2048;
+  Serial.printf("Send %u %u %u\n", _len, _sent, toSend);
 
   if(window < toSend) {
       toSend = window;
@@ -601,10 +620,23 @@ AsyncWebSocketJsonMessage::~AsyncWebSocketJsonMessage() {
 
   bool final = (_sent == _len);
   uint8_t * _data = new uint8_t[toSend];
-  ChunkPrint dest(_data, (_sent - toSend), toSend);
-  serializeJson(_WSbuffer->getRoot(), dest);
+
+  for(int i = 0; i < toSend; )
+  {
+      if(!this->buff.buffer.isEmpty())
+      {
+        _data[i] = this->buff.buffer.shift();
+        i++;
+      }
+      else
+      {
+        Serial.println("Read Yielded");
+        taskYIELD();
+      }
+  }
+
+  Serial.println(String((const char*)_data, toSend));
   
-  //uint8_t* dPtr = (uint8_t*)(_data + (_sent - toSend));
   uint8_t opCode = (toSend && _sent == toSend)?_opcode:(uint8_t)WS_CONTINUATION;
 
   size_t sent = webSocketSendFrame(client, final, opCode, _mask, _data, toSend);
@@ -614,10 +646,10 @@ AsyncWebSocketJsonMessage::~AsyncWebSocketJsonMessage() {
   if(toSend && sent != toSend){
       //ets_printf("E: %u != %u\n", toSend, sent);
       size_t delta = (toSend - sent);
-      // Serial.printf("\ns:%u a:%u d:%u\n", _sent, _ack, delta);
+       Serial.printf("\ns:%u a:%u d:%u\n", _sent, _ack, delta);
       _sent -= delta;
       _ack -= delta + ((delta < 126)?2:4) + (_mask * 4);
-      // Serial.printf("s:%u a:%u\n", _sent, _ack);
+       Serial.printf("s:%u a:%u\n", _sent, _ack);
       if (!sent) {
         _status = WS_MSG_ERROR;
       }

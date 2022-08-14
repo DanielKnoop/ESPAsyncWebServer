@@ -555,9 +555,9 @@ void AsyncWebSocketJsonMessage::vTaskSerializeTask( void * pvParameters )
 {
   AsyncWebSocketJsonMessage* me = static_cast<AsyncWebSocketJsonMessage *>(pvParameters);
 
-  Serial.println("Begin Serialize");
+  //Serial.println("Begin Serialize");
   serializeJson(me->_WSbuffer->getRoot(), me->buff);
-  Serial.println("Serialize finished, delete Task");
+  //Serial.println("Serialize finished, delete Task");
 
   vTaskDelete(NULL);
 }
@@ -607,7 +607,7 @@ AsyncWebSocketJsonMessage::~AsyncWebSocketJsonMessage() {
   size_t window = webSocketSendFrameWindow(client);
   if(window > 2048)
     window = 2048;
-  Serial.printf("Send %u %u %u\n", _len, _sent, toSend);
+  //Serial.printf("Send %u %u %u\n", _len, _sent, toSend);
 
   if(window < toSend) {
       toSend = window;
@@ -621,21 +621,12 @@ AsyncWebSocketJsonMessage::~AsyncWebSocketJsonMessage() {
   bool final = (_sent == _len);
   uint8_t * _data = new uint8_t[toSend];
 
-  for(int i = 0; i < toSend; )
+  for(int i = 0; i < toSend; i++)
   {
-      if(!this->buff.buffer.isEmpty())
-      {
-        _data[i] = this->buff.buffer.shift();
-        i++;
-      }
-      else
-      {
-        Serial.println("Read Yielded");
-        taskYIELD();
-      }
+     xStreamBufferReceive(this->buff.streamBufferHandle, &_data[i], 1, pdMS_TO_TICKS( 1000 ));
   }
 
-  Serial.println(String((const char*)_data, toSend));
+  //Serial.println(String((const char*)_data, toSend));
   
   uint8_t opCode = (toSend && _sent == toSend)?_opcode:(uint8_t)WS_CONTINUATION;
 
@@ -646,10 +637,10 @@ AsyncWebSocketJsonMessage::~AsyncWebSocketJsonMessage() {
   if(toSend && sent != toSend){
       //ets_printf("E: %u != %u\n", toSend, sent);
       size_t delta = (toSend - sent);
-       Serial.printf("\ns:%u a:%u d:%u\n", _sent, _ack, delta);
+      Serial.printf("\ns:%u a:%u d:%u\n", _sent, _ack, delta);
       _sent -= delta;
       _ack -= delta + ((delta < 126)?2:4) + (_mask * 4);
-       Serial.printf("s:%u a:%u\n", _sent, _ack);
+      // Serial.printf("s:%u a:%u\n", _sent, _ack);
       if (!sent) {
         _status = WS_MSG_ERROR;
       }

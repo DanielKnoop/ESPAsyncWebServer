@@ -24,8 +24,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include "AsyncJson.h"
-#include <CircularBuffer.h>
-#include <CircularBufferWriter.h>
+#include <JsonBufferStreamWriter.h>
 #ifdef ESP32
 #include <AsyncTCP.h>
 #define WS_MAX_QUEUED_MESSAGES 32
@@ -222,7 +221,7 @@ class AsyncWebSocketJsonMessage: public AsyncWebSocketMessage {
     size_t _acked;
     AsyncWebSocketJsonBuffer * _WSbuffer;
     TaskHandle_t xHandleSerializeTask = NULL;
-    CircularBufferWriter buff;
+    JsonBufferStreamWriter buff;
     static void vTaskSerializeTask( void * pvParameters );
 public:
     AsyncWebSocketJsonMessage(AsyncWebSocketJsonBuffer * buffer, uint8_t opcode=WS_TEXT, bool mask=false);
